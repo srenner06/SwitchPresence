@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/spike/">
+    <Project Path="spike/Spike.csproj" />
+  </Folder>
+  <Folder Name="/src/">
+    <Project Path="src/SwitchPresence.Background/SwitchPresence.Background.csproj" />
+    <Project Path="src/SwitchPresence.Console/SwitchPresence.Console.csproj" />
+    <Project Path="src/SwitchPresence.Core/SwitchPresence.Core.csproj" />
+  </Folder>
+</Solution>

@@ -22,6 +22,8 @@ const string Coral = "https://api-lp1.znc.srv.nintendo.net";
 const string UserAgent = "switch-presence/0.1.0 (+https://github.com/srenner06/SwitchPresence)";
 const string CoralUserAgent = $"com.nintendo.znca/{ZncaVersion}(Android/12)";
 
+if (args is ["discord", ..]) return await DiscordSpike.RunAsync(args);
+
 var dataDir = Path.Combine(
     Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "switch-presence");
 Directory.CreateDirectory(dataDir);
@@ -233,7 +235,10 @@ void PrintFriends(JsonDocument doc)
         Console.WriteLine($"  {Get(f, "name"),-20} {state,-9} {platform,-10} {game ?? "-"}");
         Console.WriteLine($"    nsaId {Get(f, "nsaId")}");
         if (hasGame)
+        {
+            Console.WriteLine($"    imageUri: {Get(g, "imageUri")}");
             Console.WriteLine($"    sysDescription: {Get(g, "sysDescription")}   shopUri: {Get(g, "shopUri")}");
+        }
     }
     Console.WriteLine("\nThe main account's nsaId above is what goes in the config.");
 
