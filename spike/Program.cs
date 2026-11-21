@@ -26,7 +26,8 @@ internal class Program
         const string UserAgent = "switch-presence/0.1.0 (+https://github.com/srenner06/SwitchPresence)";
         const string CoralUserAgent = $"com.nintendo.znca/{ZncaVersion}(Android/12)";
 
-        if (args is ["discord", ..]) return await DiscordSpike.RunAsync(args);
+        if (args is ["discord", ..])
+            return await DiscordSpike.RunAsync(args);
 
         var dataDir = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "switch-presence");
@@ -41,6 +42,7 @@ internal class Program
         var nxapiClientId = Environment.GetEnvironmentVariable("NXAPI_AUTH_CLIENT_ID")?.Trim();
         if (string.IsNullOrEmpty(nxapiClientId) && File.Exists(clientIdFile))
             nxapiClientId = File.ReadAllText(clientIdFile).Trim();
+
         if (string.IsNullOrEmpty(nxapiClientId))
         {
             Console.Error.WriteLine("No nxapi-auth client id.");
@@ -123,7 +125,8 @@ internal class Program
             coralToken = await CoralLoginAsync();
             Console.WriteLine($"    coral token cached in {coralFile}");
         }
-        else Console.WriteLine($"\n[4] reusing cached Coral token ({coralFile})");
+        else
+            Console.WriteLine($"\n[4] reusing cached Coral token ({coralFile})");
 
         var friends = await FriendListAsync(coralToken);
         PrintFriends(friends);
@@ -149,6 +152,7 @@ internal class Program
             var f = await JsonAsync(fReq);
             if (f.RootElement.TryGetProperty("warnings", out var w))
                 Console.WriteLine($"    WARNINGS from f-API: {w}");
+
             var encryptedLogin = Convert.FromBase64String(
                 f.RootElement.GetProperty("encrypted_token_request").GetString()!);
             Console.WriteLine($"    encrypted login body: {encryptedLogin.Length} bytes");
@@ -195,6 +199,7 @@ internal class Program
                 using var enc = JsonDocument.Parse(Text(encBody));
                 if (enc.RootElement.TryGetProperty("warnings", out var w))
                     Console.WriteLine($"    WARNINGS from f-API: {w}");
+
                 encrypted = FromBase64Url(enc.RootElement.GetProperty("data").GetString()!);
                 Console.WriteLine($"    encrypt-request -> JSON envelope, {encrypted.Length} bytes decoded");
             }
@@ -244,6 +249,7 @@ internal class Program
                     Console.WriteLine($"    sysDescription: {Get(g, "sysDescription")}   shopUri: {Get(g, "shopUri")}");
                 }
             }
+
             Console.WriteLine("\nThe main account's nsaId above is what goes in the config.");
 
             // Sanitise names/nsaIds before any of this becomes a committed test fixture.
@@ -262,13 +268,16 @@ internal class Program
             var text = Text(bytes);
             if (status != HttpStatusCode.OK)
                 throw new Exception($"decrypt-response HTTP {(int)status}: {text}");
+
             return JsonDocument.Parse(text);
         }
 
         static JsonElement RequireCoralOk(JsonDocument doc, string what)
         {
             var status = doc.RootElement.GetProperty("status").GetInt32();
-            if (status == 0) return doc.RootElement.GetProperty("result");
+            if (status == 0)
+                return doc.RootElement.GetProperty("result");
+
             var hint = status switch
             {
                 9403 => "INVALID_TOKEN - re-login",
@@ -294,6 +303,7 @@ internal class Program
             var res = await http.SendAsync(req);
             if (res.Headers.TryGetValues("Retry-After", out var ra))
                 Console.WriteLine($"    (Retry-After: {string.Join(",", ra)})");
+
             return (res.StatusCode, await res.Content.ReadAsByteArrayAsync(), res.Content.Headers.ContentType?.MediaType);
         }
 
@@ -303,6 +313,7 @@ internal class Program
             var text = Text(bytes);
             if ((int)status is < 200 or > 299)
                 throw new Exception($"{(int)status} from {req.RequestUri}\n{text}");
+
             try { return JsonDocument.Parse(text); }
             catch (JsonException ex)
             {
@@ -351,12 +362,16 @@ internal class Program
 
             var pasted = (Console.ReadLine() ?? "").Trim();
             var hash = pasted.IndexOf('#');
-            if (hash < 0) throw new Exception("No '#' in that link - copy the link address, don't follow it.");
+            if (hash < 0)
+                throw new Exception("No '#' in that link - copy the link address, don't follow it.");
+
             var frag = ParseQuery(pasted[(hash + 1)..]);
             if (frag.TryGetValue("error", out var err))
                 throw new Exception($"Nintendo error '{err}': {frag.GetValueOrDefault("error_description")}");
+
             if (frag.GetValueOrDefault("state") != state)
                 throw new Exception("state mismatch - that link is from a different login attempt.");
+
             if (!frag.TryGetValue("session_token_code", out var code))
                 throw new Exception("no session_token_code in that link.");
 
@@ -377,16 +392,23 @@ internal class Program
 
         string? LoadCoralToken()
         {
-            if (!File.Exists(coralFile)) return null;
+            if (!File.Exists(coralFile))
+                return null;
+
             var lines = File.ReadAllLines(coralFile);
-            if (lines.Length < 2 || !long.TryParse(lines[0], out var exp)) return null;
+            if (lines.Length < 2 || !long.TryParse(lines[0], out var exp))
+                return null;
+
             return DateTimeOffset.UtcNow.ToUnixTimeSeconds() < exp ? lines[1] : null;
         }
 
-        static HttpRequestMessage Json(HttpMethod m, string url, object body) => new(m, url)
+        static HttpRequestMessage Json(HttpMethod m, string url, object body)
         {
-            Content = new StringContent(JsonSerializer.Serialize(body), Encoding.UTF8, "application/json"),
-        };
+            return new(m, url)
+            {
+                Content = new StringContent(JsonSerializer.Serialize(body), Encoding.UTF8, "application/json"),
+            };
+        }
 
         static HttpRequestMessage Octet(HttpMethod m, string url, byte[] body)
         {
@@ -395,17 +417,23 @@ internal class Program
             return new HttpRequestMessage(m, url) { Content = c };
         }
 
-        static string? Get(JsonElement e, string name) =>
-            e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
+        static string? Get(JsonElement e, string name)
+        {
+            return e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
+        }
 
-        static Dictionary<string, string> ParseQuery(string s) =>
-            s.Split('&', StringSplitOptions.RemoveEmptyEntries)
+        static Dictionary<string, string> ParseQuery(string s)
+        {
+            return s.Split('&', StringSplitOptions.RemoveEmptyEntries)
              .Select(p => p.Split('=', 2))
              .ToDictionary(p => Uri.UnescapeDataString(p[0]),
                            p => p.Length > 1 ? Uri.UnescapeDataString(p[1]) : "");
+        }
 
-        static string Base64Url(byte[] b) =>
-            Convert.ToBase64String(b).TrimEnd('=').Replace('+', '-').Replace('/', '_');
+        static string Base64Url(byte[] b)
+        {
+            return Convert.ToBase64String(b).TrimEnd('=').Replace('+', '-').Replace('/', '_');
+        }
 
         static byte[] FromBase64Url(string s)
         {
@@ -413,11 +441,20 @@ internal class Program
             return Convert.FromBase64String(s.PadRight((s.Length + 3) / 4 * 4, '='));
         }
 
-        static string Preview(string s) => s.Length <= 24 ? s : $"{s[..10]}...{s[^4..]} ({s.Length} ch)";
+        static string Preview(string s)
+        {
+            return s.Length <= 24 ? s : $"{s[..10]}...{s[^4..]} ({s.Length} ch)";
+        }
 
         // UTF-8 with any BOM stripped - System.Text.Json rejects a leading BOM.
-        static string Text(byte[] b) => Encoding.UTF8.GetString(b).TrimStart('﻿');
+        static string Text(byte[] b)
+        {
+            return Encoding.UTF8.GetString(b).TrimStart('\uFEFF');
+        }
 
-        static string Hex(byte[] b) => Convert.ToHexString(b.AsSpan(0, Math.Min(24, b.Length)));
+        static string Hex(byte[] b)
+        {
+            return Convert.ToHexString(b.AsSpan(0, Math.Min(24, b.Length)));
+        }
     }
 }

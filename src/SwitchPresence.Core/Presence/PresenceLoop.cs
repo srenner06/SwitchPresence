@@ -13,116 +13,42 @@ namespace SwitchPresence.Presence;
 public sealed class PresenceLoop(HttpClient http, AppConfig config, string nxapiAuthClientId)
 {
     /// <summary>Backoff schedule for network and service errors. Never retries in a tight loop.</summary>
-    static readonly TimeSpan[] Backoff =
+    private static readonly TimeSpan[] Backoff =
     [
         TimeSpan.FromSeconds(30), TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(2),
         TimeSpan.FromMinutes(5), TimeSpan.FromMinutes(10),
     ];
 
     /// <summary>How long a stale activity may stay up before it stops being honest.</summary>
-    static readonly TimeSpan StaleAfter = TimeSpan.FromMinutes(10);
+    private static readonly TimeSpan StaleAfter = TimeSpan.FromMinutes(10);
 
-    readonly NintendoAccountClient _accounts = new(http);
-    readonly ZncaApiClient _znca = new(http, nxapiAuthClientId);
+    private readonly NintendoAccountClient _accounts = new(http);
+    private readonly ZncaApiClient _znca = new(http, nxapiAuthClientId);
+    private readonly DiscordIpcClient _discord = new();
+
+    private CoralClient _coral = null!;
+    private string _sessionToken = "";
+    private string _zncaVersion = "";
+
+    private CoralSession? _session;
+    private string? _publishedJson;
+    private string? _currentGame;
+    private DateTimeOffset _gameStartedAt = DateTimeOffset.UtcNow;
+    private DateTimeOffset _lastSuccess = DateTimeOffset.UtcNow;
+    private int _failures;
+    private bool _paused;
 
     public async Task RunAsync(CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(config.FriendNsaId))
-            throw new InvalidOperationException("No account chosen yet. Run `switch-presence login` first.");
-
-        var sessionToken = SecretStore.Read(AppPaths.SessionFile)
-            ?? throw new InvalidOperationException("Not signed in. Run `switch-presence login` first.");
-
-        var coral = new CoralClient(http, _znca, _accounts);
-        var zncaVersion = config.ZncaVersionOverride ?? await _znca.GetZncaVersionAsync(ct);
-        Log.Info($"watching {config.FriendName ?? config.FriendNsaId} (NSO app {zncaVersion})");
-
-        await using var discord = new DiscordIpcClient();
-        var session = LoadCachedSession();
-
-        string? publishedJson = null;
-        string? currentGame = null;
-        var gameStartedAt = DateTimeOffset.UtcNow;
-        var lastSuccess = DateTimeOffset.UtcNow;
-        var failures = 0;
-        var waitingForDiscord = false;
+        await StartAsync(ct);
 
         try
         {
             while (!ct.IsCancellationRequested)
             {
-                // Polling Nintendo while nothing can consume the result just wastes their
-                // service and ours, so pause entirely when Discord is not running.
-                if (!DiscordIsRunning())
-                {
-                    if (!waitingForDiscord)
-                    {
-                        Log.Info("Discord is not running - polling paused");
-                        waitingForDiscord = true;
-                        publishedJson = null;
-                        await discord.DisconnectAsync();
-                    }
-                    await Task.Delay(config.PollInterval, ct);
-                    continue;
-                }
-
-                if (waitingForDiscord)
-                {
-                    Log.Info("Discord is back - resuming");
-                    waitingForDiscord = false;
-                }
-
-                try
-                {
-                    if (session is null || !session.IsValid)
-                        session = await LoginAndCacheAsync(coral, sessionToken, zncaVersion, ct);
-
-                    var friends = await coral.GetFriendsAsync(session, zncaVersion, ct);
-                    var friend = friends.FirstOrDefault(f => f.NsaId == config.FriendNsaId);
-
-                    if (friend is null)
-                        Log.Warn($"{config.FriendNsaId} is not in the friend list any more");
-
-                    // The elapsed timer must survive polls, so only a different game resets it.
-                    var gameName = friend?.Presence.Game?.Name;
-                    if (gameName != currentGame)
-                    {
-                        currentGame = gameName;
-                        gameStartedAt = DateTimeOffset.UtcNow;
-                    }
-
-                    var mapped = PresenceMapper.Map(friend?.Presence, config,
-                        gameStartedAt.ToUnixTimeMilliseconds());
-
-                    publishedJson = await PublishAsync(discord, mapped, publishedJson, ct);
-
-                    lastSuccess = DateTimeOffset.UtcNow;
-                    failures = 0;
-                }
-                catch (CoralException ex) when (ex.NeedsRelogin)
-                {
-                    Log.Info("Coral token rejected - signing in again");
-                    session = null;
-                    ClearCachedSession();
-                    continue; // straight back round: this is a known state, not a failure
-                }
-                catch (Exception ex) when (ex is ApiException or CoralException or HttpRequestException)
-                {
-                    var delay = DelayAfterFailure(ex, failures++);
-
-                    // A connection that has been down a while must stop claiming a live game.
-                    if (publishedJson is not null && DateTimeOffset.UtcNow - lastSuccess > StaleAfter)
-                    {
-                        Log.Warn($"no data for {StaleAfter.TotalMinutes:0} minutes - clearing the activity");
-                        await discord.TrySetActivityAsync(null, ct);
-                        publishedJson = null;
-                    }
-
-                    await Task.Delay(delay, ct);
-                    continue;
-                }
-
-                await Task.Delay(config.PollInterval, ct);
+                var wait = await TickAsync(ct);
+                if (wait > TimeSpan.Zero)
+                    await Task.Delay(wait, ct);
             }
         }
         catch (OperationCanceledException)
@@ -131,81 +57,220 @@ public sealed class PresenceLoop(HttpClient http, AppConfig config, string nxapi
         }
         finally
         {
-            if (discord.IsConnected)
-            {
-                using var grace = new CancellationTokenSource(TimeSpan.FromSeconds(2));
-                try { await discord.TrySetActivityAsync(null, grace.Token); } catch { /* going away anyway */ }
-            }
+            await ClearOnExitAsync();
         }
     }
 
-    /// <summary>Returns the JSON now live in Discord, or null if nothing is.</summary>
-    async Task<string?> PublishAsync(DiscordIpcClient discord, MappedActivity? mapped, string? publishedJson,
-        CancellationToken ct)
+    private async Task StartAsync(CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(config.FriendNsaId))
+            throw new InvalidOperationException("No account chosen yet. Run `switch-presence login` first.");
+
+        _sessionToken = SecretStore.Read(AppPaths.SessionFile)
+            ?? throw new InvalidOperationException("Not signed in. Run `switch-presence login` first.");
+
+        _coral = new CoralClient(http, _znca, _accounts);
+        _zncaVersion = config.ZncaVersionOverride ?? await _znca.GetZncaVersionAsync(ct);
+        _session = LoadCachedSession();
+
+        Log.Info($"watching {config.FriendName ?? config.FriendNsaId} (NSO app {_zncaVersion})");
+    }
+
+    /// <summary>One iteration. Returns how long to wait before the next one.</summary>
+    private async Task<TimeSpan> TickAsync(CancellationToken ct)
+    {
+        // Polling Nintendo while nothing can consume the result wastes their service and
+        // ours, so pause entirely while Discord is closed.
+        if (!DiscordIsRunning())
+        {
+            await PauseAsync();
+            return config.PollInterval;
+        }
+
+        Resume();
+
+        try
+        {
+            await EnsureSessionAsync(ct);
+
+            var presence = await FetchPresenceAsync(ct);
+            await PublishAsync(PresenceMapper.Map(presence, config, StartTimestampFor(presence)), ct);
+
+            _lastSuccess = DateTimeOffset.UtcNow;
+            _failures = 0;
+            return config.PollInterval;
+        }
+        catch (CoralException ex) when (ex.NeedsRelogin)
+        {
+            // A known state rather than a failure, so no backoff and no failure count.
+            Log.Info("Coral token rejected - signing in again");
+            _session = null;
+            SecretStore.Delete(AppPaths.CoralTokenFile);
+            return TimeSpan.Zero;
+        }
+        catch (Exception ex) when (ex is ApiException or CoralException or HttpRequestException)
+        {
+            await ClearIfStaleAsync(ct);
+            return DelayAfterFailure(ex, _failures++);
+        }
+    }
+
+    private async Task<CoralPresence?> FetchPresenceAsync(CancellationToken ct)
+    {
+        var friends = await _coral.GetFriendsAsync(_session!, _zncaVersion, ct);
+        var friend = friends.FirstOrDefault(f => f.NsaId == config.FriendNsaId);
+
+        if (friend is null)
+            Log.Warn($"{config.FriendNsaId} is not in the friend list any more");
+
+        return friend?.Presence;
+    }
+
+    /// <summary>The elapsed timer must survive polls, so only a different game resets it.</summary>
+    private long StartTimestampFor(CoralPresence? presence)
+    {
+        var gameName = presence?.Game?.Name;
+        if (gameName != _currentGame)
+        {
+            _currentGame = gameName;
+            _gameStartedAt = DateTimeOffset.UtcNow;
+        }
+
+        return _gameStartedAt.ToUnixTimeMilliseconds();
+    }
+
+    private async Task PublishAsync(MappedActivity? mapped, CancellationToken ct)
     {
         if (mapped is null)
         {
-            if (publishedJson is null) return null;
+            if (_publishedJson is null)
+                return;
+
             Log.Info("nothing playing - activity cleared");
-            await discord.TrySetActivityAsync(null, ct);
-            return null;
+            await _discord.TrySetActivityAsync(null, ct);
+            _publishedJson = null;
+            return;
         }
 
         // Comparing the serialised form is the cheapest honest equality for these objects:
         // timestamps only move when the game changes, so identical JSON means nothing changed.
         var json = JsonSerializer.Serialize(mapped.Activity, AppJsonContext.Default.DiscordActivity);
-        var reconnectNeeded = !discord.IsConnected || discord.ConnectedAppId != mapped.AppId;
-        if (json == publishedJson && !reconnectNeeded) return publishedJson;
+        var reconnectNeeded = !_discord.IsConnected || _discord.ConnectedAppId != mapped.AppId;
 
-        if (reconnectNeeded && !await discord.TryConnectAsync(mapped.AppId, ct)) return null;
+        if (json == _publishedJson && !reconnectNeeded)
+            return;
 
-        if (!await discord.TrySetActivityAsync(mapped.Activity, ct)) return null;
+        if (reconnectNeeded && !await _discord.TryConnectAsync(mapped.AppId, ct))
+        {
+            _publishedJson = null;
+            return;
+        }
 
+        if (!await _discord.TrySetActivityAsync(mapped.Activity, ct))
+        {
+            _publishedJson = null;
+            return;
+        }
+
+        _publishedJson = json;
         Log.Info($"{mapped.Activity.Details} ({mapped.Activity.State ?? "no status"})");
-        return json;
     }
 
-    static TimeSpan DelayAfterFailure(Exception ex, int previousFailures)
+    private async Task EnsureSessionAsync(CancellationToken ct)
+    {
+        if (_session is { IsValid: true })
+            return;
+
+        _session = await _coral.LoginAsync(_sessionToken, _zncaVersion, ct);
+        SecretStore.Write(AppPaths.CoralTokenFile,
+            $"{_session.ExpiresAt.ToUnixTimeSeconds()}\n{_session.AccessToken}");
+    }
+
+    private async Task PauseAsync()
+    {
+        if (_paused)
+            return;
+
+        Log.Info("Discord is not running - polling paused");
+        _paused = true;
+        _publishedJson = null;
+        await _discord.DisconnectAsync();
+    }
+
+    private void Resume()
+    {
+        if (!_paused)
+            return;
+
+        Log.Info("Discord is back - resuming");
+        _paused = false;
+    }
+
+    /// <summary>A connection that has been down a while must stop claiming a live game.</summary>
+    private async Task ClearIfStaleAsync(CancellationToken ct)
+    {
+        if (_publishedJson is null || DateTimeOffset.UtcNow - _lastSuccess <= StaleAfter)
+            return;
+
+        Log.Warn($"no data for {StaleAfter.TotalMinutes:0} minutes - clearing the activity");
+        await _discord.TrySetActivityAsync(null, ct);
+        _publishedJson = null;
+    }
+
+    private async Task ClearOnExitAsync()
+    {
+        if (_discord.IsConnected)
+        {
+            // The caller's token is already cancelled, so shutdown needs a token of its own.
+            using var grace = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+            try
+            {
+                await _discord.TrySetActivityAsync(null, grace.Token);
+            }
+            catch (Exception ex) when (ex is OperationCanceledException or IOException)
+            {
+                // Going away anyway.
+            }
+        }
+
+        await _discord.DisposeAsync();
+    }
+
+    private static TimeSpan DelayAfterFailure(Exception ex, int previousFailures)
     {
         var delay = Backoff[Math.Min(previousFailures, Backoff.Length - 1)];
 
         // The API terms say Retry-After wins over any schedule of ours.
-        if (ex is ApiException { RetryAfter: { } retryAfter } && retryAfter > delay) delay = retryAfter;
+        if (ex is ApiException { RetryAfter: { } retryAfter } && retryAfter > delay)
+            delay = retryAfter;
 
         if (ex is CoralException { Status: CoralStatus.UpgradeRequired })
+        {
             Log.Error("Nintendo no longer accepts the NSO app version we send. "
                 + "An update to switch-presence is needed; retrying meanwhile.");
+        }
         else
-            Log.Warn($"{ex.Message} - retrying in {Format(delay)}");
+            Log.Warn($"{ex.Message} - retrying in {Humanize(delay)}");
 
         return delay;
     }
 
-    async Task<CoralSession> LoginAndCacheAsync(CoralClient coral, string sessionToken, string zncaVersion,
-        CancellationToken ct)
-    {
-        var session = await coral.LoginAsync(sessionToken, zncaVersion, ct);
-        SecretStore.Write(AppPaths.CoralTokenFile,
-            $"{session.ExpiresAt.ToUnixTimeSeconds()}\n{session.AccessToken}");
-        return session;
-    }
-
     /// <summary>The terms require caching tokens for their full validity, restarts included.</summary>
-    static CoralSession? LoadCachedSession()
+    private static CoralSession? LoadCachedSession()
     {
-        if (SecretStore.Read(AppPaths.CoralTokenFile) is not { } cached) return null;
+        if (SecretStore.Read(AppPaths.CoralTokenFile) is not { } cached)
+            return null;
 
         var parts = cached.Split('\n', 2);
-        if (parts.Length != 2 || !long.TryParse(parts[0], out var expiry)) return null;
+        if (parts.Length != 2 || !long.TryParse(parts[0], out var expiry))
+            return null;
 
         var session = new CoralSession(parts[1], DateTimeOffset.FromUnixTimeSeconds(expiry));
         return session.IsValid ? session : null;
     }
 
-    static void ClearCachedSession() => SecretStore.Delete(AppPaths.CoralTokenFile);
-
     /// <summary>Cheap existence check, so we never handshake just to find out Discord is closed.</summary>
-    static bool DiscordIsRunning()
+    private static bool DiscordIsRunning()
     {
         try
         {
@@ -217,6 +282,8 @@ public sealed class PresenceLoop(HttpClient http, AppConfig config, string nxapi
         }
     }
 
-    static string Format(TimeSpan span) =>
-        span.TotalMinutes >= 1 ? $"{span.TotalMinutes:0} min" : $"{span.TotalSeconds:0} s";
+    private static string Humanize(TimeSpan span)
+    {
+        return span.TotalMinutes >= 1 ? $"{span.TotalMinutes:0} min" : $"{span.TotalSeconds:0} s";
+    }
 }

@@ -5,7 +5,7 @@ namespace SwitchPresence.Tests;
 
 public class LoginFlowTests
 {
-    const string RealLink =
+    private const string RealLink =
         "npf71b963c1b7b6d119://auth#session_token_code=eyJhbGciOiJIUzI1NiJ9.payload.signature"
         + "&state=Lc7lnYMSuyl-BI1VOOAOcHZ0aNqQkg_R8UkQgzhGZwDLdSZi"
         + "&session_state=32b6815c24a1a6b8ef04756484a5bcf5924635021baa557f11ff6ab2e873bb90";

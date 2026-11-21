@@ -10,7 +10,8 @@ internal class Program
 {
     private static async Task<int> Main(string[] args)
     {
-        if (!AppInstance.TryAcquire(out var mutex)) return 1;
+        if (!AppInstance.TryAcquire(out var mutex))
+            return 1;
 
         using (mutex)
         {

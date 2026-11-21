@@ -6,12 +6,12 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
-static class DiscordSpike
+internal static class DiscordSpike
 {
-    const string SwitchAppId = "1573788454590873731";
-    const string Switch2AppId = "1573788516343873598";
+    private const string SwitchAppId = "1573788454590873731";
+    private const string Switch2AppId = "1573788516343873598";
 
-    static readonly JsonSerializerOptions Opts = new()
+    private static readonly JsonSerializerOptions Opts = new()
     {
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
         WriteIndented = false,
@@ -34,7 +34,9 @@ static class DiscordSpike
         await SendAsync(pipe, 0, JsonSerializer.Serialize(new { v = 1, client_id = appId }, Opts));
         var (op, json) = await NextAsync(pipe);
         Console.WriteLine($"\n<- op {op}: {json}");
-        if (op != 1) return Fail("handshake did not come back as op 1 (FRAME)");
+        if (op != 1)
+            return Fail("handshake did not come back as op 1 (FRAME)");
+
         using (var ready = JsonDocument.Parse(json))
         {
             if (ready.RootElement.TryGetProperty("evt", out var evt) && evt.GetString() == "READY")
@@ -100,13 +102,13 @@ static class DiscordSpike
         return 0;
     }
 
-    static int Fail(string why)
+    private static int Fail(string why)
     {
         Console.Error.WriteLine($"FAILED: {why}");
         return 1;
     }
 
-    static async Task<NamedPipeClientStream> ConnectAsync()
+    private static async Task<NamedPipeClientStream> ConnectAsync()
     {
         for (var i = 0; i <= 9; i++)
         {
@@ -123,23 +125,26 @@ static class DiscordSpike
                 await pipe.DisposeAsync();
             }
         }
+
         throw new Exception("No discord-ipc-N pipe found. Is the Discord DESKTOP app running? "
             + "The browser version has no local pipe.");
     }
 
     // Answers PINGs so a slow look at the profile doesn't drop the connection.
-    static async Task<(int Op, string Json)> NextAsync(Stream s)
+    private static async Task<(int Op, string Json)> NextAsync(Stream s)
     {
         while (true)
         {
             var (op, json) = await ReadAsync(s);
-            if (op != 3) return (op, json);
+            if (op != 3)
+                return (op, json);
+
             await SendAsync(s, 4, json);
             Console.WriteLine("    (ping -> pong)");
         }
     }
 
-    static async Task SendAsync(Stream s, int op, string json)
+    private static async Task SendAsync(Stream s, int op, string json)
     {
         var payload = Encoding.UTF8.GetBytes(json);
         var header = new byte[8];
@@ -150,7 +155,7 @@ static class DiscordSpike
         await s.FlushAsync();
     }
 
-    static async Task<(int Op, string Json)> ReadAsync(Stream s)
+    private static async Task<(int Op, string Json)> ReadAsync(Stream s)
     {
         var header = new byte[8];
         await s.ReadExactlyAsync(header);

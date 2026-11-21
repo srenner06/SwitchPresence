@@ -22,13 +22,16 @@ public static class LoginFlow
         account is the one whose presence gets shown, and it is never signed in to.
         """;
 
-    public static PendingLogin Start() => new();
+    public static PendingLogin Start()
+    {
+        return new();
+    }
 }
 
 public sealed class PendingLogin
 {
-    readonly string _state;
-    readonly string _verifier;
+    private readonly string _state;
+    private readonly string _verifier;
 
     internal PendingLogin()
     {
@@ -79,8 +82,10 @@ public sealed class PendingLogin
     {
         var hash = link.IndexOf('#');
         if (hash < 0)
+        {
             throw new LoginException("That is not the right link: it has no '#'. "
                 + "Copy the link address of the button rather than clicking it.");
+        }
 
         return link[(hash + 1)..]
             .Split('&', StringSplitOptions.RemoveEmptyEntries)
@@ -90,8 +95,10 @@ public sealed class PendingLogin
                 part => part.Length > 1 ? Uri.UnescapeDataString(part[1]) : "");
     }
 
-    static string Base64Url(byte[] bytes) =>
-        Convert.ToBase64String(bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_');
+    private static string Base64Url(byte[] bytes)
+    {
+        return Convert.ToBase64String(bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_');
+    }
 }
 
 public sealed class LoginException(string message) : Exception(message);

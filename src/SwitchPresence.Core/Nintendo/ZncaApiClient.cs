@@ -14,19 +14,19 @@ public sealed class ZncaApiClient(HttpClient http, string clientId)
 {
     public const string UserAgent = "switch-presence/0.1.0 (+https://github.com/srenner06/SwitchPresence)";
 
-    const string Origin = "https://nxapi-znca-api.fancy.org.uk";
-    const string Api = $"{Origin}/api/znca/";
-    const string Scope = "ca:gf ca:er ca:dr";
+    private const string Origin = "https://nxapi-znca-api.fancy.org.uk";
+    private const string Api = $"{Origin}/api/znca/";
+    private const string Scope = "ca:gf ca:er ca:dr";
 
     /// <summary>Required by the API terms, and must never be derived at runtime.</summary>
-    const string ClientVersion = "d8fAZDPzwimzQ7c6";
+    private const string ClientVersion = "d8fAZDPzwimzQ7c6";
 
     /// <summary>Used only if the version cannot be discovered; see <see cref="GetZncaVersionAsync"/>.</summary>
     public const string FallbackZncaVersion = "3.6.0";
 
-    string? _accessToken;
-    DateTimeOffset _accessTokenExpiry = DateTimeOffset.MinValue;
-    string? _tokenEndpoint;
+    private string? _accessToken;
+    private DateTimeOffset _accessTokenExpiry = DateTimeOffset.MinValue;
+    private string? _tokenEndpoint;
 
     /// <summary>
     /// The NSO app version the service currently runs workers for. Sending a version with no
@@ -40,12 +40,14 @@ public sealed class ZncaApiClient(HttpClient http, string clientId)
             var request = new HttpRequestMessage(HttpMethod.Get, $"{Api}config");
             request.Headers.TryAddWithoutValidation("User-Agent", UserAgent);
             var config = await ApiHttp.JsonAsync(http, request, AppJsonContext.Default.ZncaConfig, ct);
-            if (!string.IsNullOrWhiteSpace(config.NsoVersion)) return config.NsoVersion;
+            if (!string.IsNullOrWhiteSpace(config.NsoVersion))
+                return config.NsoVersion;
         }
         catch (Exception ex) when (ex is ApiException or HttpRequestException)
         {
             Log.Warn($"could not read the supported NSO version ({ex.Message}); using {FallbackZncaVersion}");
         }
+
         return FallbackZncaVersion;
     }
 
@@ -111,7 +113,7 @@ public sealed class ZncaApiClient(HttpClient http, string clientId)
         return ApiHttp.Text(bytes);
     }
 
-    async Task<T> PostJsonAsync<T>(string url, string body,
+    private async Task<T> PostJsonAsync<T>(string url, string body,
         System.Text.Json.Serialization.Metadata.JsonTypeInfo<T> typeInfo, string zncaVersion, CancellationToken ct)
     {
         try
@@ -126,7 +128,7 @@ public sealed class ZncaApiClient(HttpClient http, string clientId)
         }
     }
 
-    async Task<HttpRequestMessage> BuildAsync(string url, string json, string zncaVersion, CancellationToken ct)
+    private async Task<HttpRequestMessage> BuildAsync(string url, string json, string zncaVersion, CancellationToken ct)
     {
         var bearer = await GetAccessTokenAsync(ct);
         var request = new HttpRequestMessage(HttpMethod.Post, url)
@@ -144,7 +146,8 @@ public sealed class ZncaApiClient(HttpClient http, string clientId)
     /// <summary>Cached for its full validity period, as the API terms require.</summary>
     public async Task<string> GetAccessTokenAsync(CancellationToken ct = default)
     {
-        if (_accessToken is not null && DateTimeOffset.UtcNow < _accessTokenExpiry) return _accessToken;
+        if (_accessToken is not null && DateTimeOffset.UtcNow < _accessTokenExpiry)
+            return _accessToken;
 
         _tokenEndpoint ??= await DiscoverTokenEndpointAsync(ct);
 
@@ -166,7 +169,7 @@ public sealed class ZncaApiClient(HttpClient http, string clientId)
         return _accessToken;
     }
 
-    async Task<string> DiscoverTokenEndpointAsync(CancellationToken ct)
+    private async Task<string> DiscoverTokenEndpointAsync(CancellationToken ct)
     {
         var resourceRequest = new HttpRequestMessage(HttpMethod.Get, $"{Origin}/.well-known/oauth-protected-resource");
         resourceRequest.Headers.TryAddWithoutValidation("User-Agent", UserAgent);
@@ -183,7 +186,7 @@ public sealed class ZncaApiClient(HttpClient http, string clientId)
         return server.TokenEndpoint;
     }
 
-    static void WarnAbout(System.Text.Json.JsonElement? warnings)
+    private static void WarnAbout(System.Text.Json.JsonElement? warnings)
     {
         if (warnings is { } w && w.ValueKind is not System.Text.Json.JsonValueKind.Null)
             Log.Warn($"f-API: {w}");

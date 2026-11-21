@@ -54,7 +54,13 @@ internal static class ApiHttp
     }
 
     /// <summary>UTF-8 with any BOM stripped; System.Text.Json rejects a leading BOM.</summary>
-    public static string Text(byte[] bytes) => Encoding.UTF8.GetString(bytes).TrimStart('﻿');
+    public static string Text(byte[] bytes)
+    {
+        return Encoding.UTF8.GetString(bytes).TrimStart('\uFEFF');
+    }
 
-    static string Clip(string s) => s.Length <= 300 ? s : s[..300] + "...";
+    private static string Clip(string s)
+    {
+        return s.Length <= 300 ? s : s[..300] + "...";
+    }
 }

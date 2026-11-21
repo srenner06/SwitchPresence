@@ -6,19 +6,23 @@ namespace SwitchPresence;
 /// </summary>
 public static class AppInstance
 {
-    const string MutexName = @"Local\SwitchPresence";
-    const string StopEventName = @"Local\SwitchPresence.stop";
+    private const string MutexName = @"Local\SwitchPresence";
+    private const string StopEventName = @"Local\SwitchPresence.stop";
 
     /// <summary>False when another instance already holds it; dispose the mutex to release.</summary>
     public static bool TryAcquire(out Mutex mutex)
     {
         mutex = new Mutex(initiallyOwned: true, MutexName, out var acquired);
-        if (!acquired) mutex.Dispose();
+        if (!acquired)
+            mutex.Dispose();
+
         return acquired;
     }
 
-    public static EventWaitHandle CreateStopEvent() =>
-        new(false, EventResetMode.ManualReset, StopEventName);
+    public static EventWaitHandle CreateStopEvent()
+    {
+        return new(false, EventResetMode.ManualReset, StopEventName);
+    }
 
     /// <summary>False means nothing was running to stop.</summary>
     public static bool SignalStop()

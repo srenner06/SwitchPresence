@@ -13,12 +13,12 @@ namespace SwitchPresence.Discord;
 /// </summary>
 public sealed class DiscordIpcClient : IAsyncDisposable
 {
-    const int OpHandshake = 0;
-    const int OpFrame = 1;
-    const int OpPing = 3;
-    const int OpPong = 4;
+    private const int OpHandshake = 0;
+    private const int OpFrame = 1;
+    private const int OpPing = 3;
+    private const int OpPong = 4;
 
-    NamedPipeClientStream? _pipe;
+    private NamedPipeClientStream? _pipe;
 
     /// <summary>Which app the current handshake used; changing it means reconnecting.</summary>
     public string? ConnectedAppId { get; private set; }
@@ -77,7 +77,8 @@ public sealed class DiscordIpcClient : IAsyncDisposable
     /// <summary>null clears the activity. False means the pipe died and a reconnect is needed.</summary>
     public async Task<bool> TrySetActivityAsync(DiscordActivity? activity, CancellationToken ct = default)
     {
-        if (!IsConnected) return false;
+        if (!IsConnected)
+            return false;
 
         try
         {
@@ -96,6 +97,7 @@ public sealed class DiscordIpcClient : IAsyncDisposable
                 Log.Error($"Discord rejected the activity: {json}");
                 return true; // the pipe is fine; the payload was not
             }
+
             return true;
         }
         catch (Exception ex) when (ex is IOException or ObjectDisposedException or InvalidOperationException)
@@ -108,14 +110,19 @@ public sealed class DiscordIpcClient : IAsyncDisposable
 
     public async Task DisconnectAsync()
     {
-        if (_pipe is not null) await _pipe.DisposeAsync();
+        if (_pipe is not null)
+            await _pipe.DisposeAsync();
+
         _pipe = null;
         ConnectedAppId = null;
     }
 
-    public ValueTask DisposeAsync() => new(DisconnectAsync());
+    public ValueTask DisposeAsync()
+    {
+        return new(DisconnectAsync());
+    }
 
-    async Task SendAsync(int opcode, string json, CancellationToken ct)
+    private async Task SendAsync(int opcode, string json, CancellationToken ct)
     {
         var payload = Encoding.UTF8.GetBytes(json);
         var header = new byte[8];
@@ -128,7 +135,7 @@ public sealed class DiscordIpcClient : IAsyncDisposable
     }
 
     /// <summary>Answers PINGs transparently so a quiet connection is not dropped.</summary>
-    async Task<(int Op, string Json)> ReceiveAsync(CancellationToken ct)
+    private async Task<(int Op, string Json)> ReceiveAsync(CancellationToken ct)
     {
         while (true)
         {
@@ -141,7 +148,9 @@ public sealed class DiscordIpcClient : IAsyncDisposable
             await _pipe.ReadExactlyAsync(payload, ct);
             var json = Encoding.UTF8.GetString(payload);
 
-            if (opcode != OpPing) return (opcode, json);
+            if (opcode != OpPing)
+                return (opcode, json);
+
             await SendAsync(OpPong, json, ct);
         }
     }

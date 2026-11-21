@@ -49,7 +49,7 @@ public sealed class CoralClient(HttpClient http, ZncaApiClient znca, NintendoAcc
     }
 
     /// <summary>Posts the already-encrypted body and returns the decrypted JSON text.</summary>
-    async Task<string> PostAsync(string path, byte[] encryptedBody, string? bearer, string zncaVersion,
+    private async Task<string> PostAsync(string path, byte[] encryptedBody, string? bearer, string zncaVersion,
         CancellationToken ct)
     {
         var content = new ByteArrayContent(encryptedBody);
@@ -63,7 +63,8 @@ public sealed class CoralClient(HttpClient http, ZncaApiClient znca, NintendoAcc
         request.Headers.TryAddWithoutValidation("User-Agent", $"com.nintendo.znca/{zncaVersion}(Android/12)");
         request.Headers.TryAddWithoutValidation("Pragma", "no-cache");
         request.Headers.TryAddWithoutValidation("Cache-Control", "no-cache");
-        if (bearer is not null) request.Headers.TryAddWithoutValidation("Authorization", $"Bearer {bearer}");
+        if (bearer is not null)
+            request.Headers.TryAddWithoutValidation("Authorization", $"Bearer {bearer}");
 
         var (status, body, _, retryAfter) = await ApiHttp.RawAsync(http, request, ct);
 
@@ -79,9 +80,11 @@ public sealed class CoralClient(HttpClient http, ZncaApiClient znca, NintendoAcc
         }
     }
 
-    static void Require(int status, string what)
+    private static void Require(int status, string what)
     {
-        if (status == CoralStatus.Ok) return;
+        if (status == CoralStatus.Ok)
+            return;
+
         throw new CoralException(status, $"{what} failed with status {status} ({CoralStatus.Describe(status)})");
     }
 }

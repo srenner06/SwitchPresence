@@ -27,7 +27,9 @@ internal class Program
         async Task<int> RunAsync()
         {
             var config = AppConfig.Load();
-            if (ResolveClientId(config) is not { } clientId) return 1;
+            if (ResolveClientId(config) is not { } clientId)
+                return 1;
+
             if (string.IsNullOrWhiteSpace(config.FriendNsaId))
                 return Fail("Not set up yet. Run `switch-presence login` first.");
 
@@ -62,7 +64,8 @@ internal class Program
         async Task<int> LoginAsync()
         {
             var config = AppConfig.Load();
-            if (ResolveClientId(config) is not { } clientId) return 1;
+            if (ResolveClientId(config) is not { } clientId)
+                return 1;
 
             Console.WriteLine(LoginFlow.Disclosure);
             Console.Write("\nType 'yes' to continue > ");
@@ -129,6 +132,7 @@ internal class Program
                 Console.Write($"\nNumber 1-{friends.Length} > ");
                 if (int.TryParse(Console.ReadLine(), out var pick) && pick >= 1 && pick <= friends.Length)
                     return friends[pick - 1];
+
                 Console.WriteLine("Not one of those.");
             }
         }
@@ -146,9 +150,11 @@ internal class Program
                     {
                         if (Environment.ProcessPath is not { } fallback)
                             return Fail("cannot determine this executable's path");
+
                         target = fallback;
                         Console.WriteLine("switch-presence-bg.exe is not here, so autostart will open a console window.");
                     }
+
                     Autostart.Enable(target);
                     Console.WriteLine($"Autostart on: {target}");
                     return 0;
@@ -174,6 +180,7 @@ internal class Program
                 Console.WriteLine("Stop signal sent.");
                 return 0;
             }
+
             Console.WriteLine("Nothing is running.");
             return 0;
         }
@@ -182,19 +189,24 @@ internal class Program
 
         string? ResolveClientId(AppConfig config)
         {
-            if (NxapiAuth.Resolve(config) is { } clientId) return clientId;
+            if (NxapiAuth.Resolve(config) is { } clientId)
+                return clientId;
+
             Fail(NxapiAuth.MissingMessage);
             return null;
         }
 
-        static HttpClient NewHttpClient() => new(new SocketsHttpHandler
+        static HttpClient NewHttpClient()
         {
-            PooledConnectionLifetime = TimeSpan.FromMinutes(10),
-            AutomaticDecompression = System.Net.DecompressionMethods.All,
-        })
-        {
-            Timeout = TimeSpan.FromSeconds(30),
-        };
+            return new(new SocketsHttpHandler
+            {
+                PooledConnectionLifetime = TimeSpan.FromMinutes(10),
+                AutomaticDecompression = System.Net.DecompressionMethods.All,
+            })
+            {
+                Timeout = TimeSpan.FromSeconds(30),
+            };
+        }
 
         int Help()
         {

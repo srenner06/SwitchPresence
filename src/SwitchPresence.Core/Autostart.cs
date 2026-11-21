@@ -7,8 +7,8 @@ namespace SwitchPresence;
 /// </summary>
 public static class Autostart
 {
-    const string RunKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
-    const string ValueName = "switch-presence";
+    private const string RunKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
+    private const string ValueName = "switch-presence";
 
     public static bool IsEnabled => Current is not null;
 
@@ -32,6 +32,7 @@ public static class Autostart
     public static void Disable()
     {
         using var key = Registry.CurrentUser.OpenSubKey(RunKey, writable: true);
-        if (key?.GetValue(ValueName) is not null) key.DeleteValue(ValueName);
+        if (key?.GetValue(ValueName) is not null)
+            key.DeleteValue(ValueName);
     }
 }

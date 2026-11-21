@@ -161,14 +161,20 @@ public static class CoralStatus
     public const int UpgradeRequired = 9427;
     public const int RateLimitExceeded = 9437;
 
-    public static bool NeedsRelogin(int status) => status is InvalidToken or TokenExpired;
-
-    public static string Describe(int status) => status switch
+    public static bool NeedsRelogin(int status)
     {
-        InvalidToken => "invalid token",
-        TokenExpired => "token expired",
-        UpgradeRequired => "the NSO app version we send is no longer accepted",
-        RateLimitExceeded => "rate limited",
-        _ => "unexpected Coral status",
-    };
+        return status is InvalidToken or TokenExpired;
+    }
+
+    public static string Describe(int status)
+    {
+        return status switch
+        {
+            InvalidToken => "invalid token",
+            TokenExpired => "token expired",
+            UpgradeRequired => "the NSO app version we send is no longer accepted",
+            RateLimitExceeded => "rate limited",
+            _ => "unexpected Coral status",
+        };
+    }
 }

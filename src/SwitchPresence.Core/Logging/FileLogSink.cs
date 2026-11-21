@@ -6,10 +6,10 @@ namespace SwitchPresence.Logging;
 /// </summary>
 public sealed class FileLogSink(string path)
 {
-    const long MaxBytes = 1_000_000;
-    const int KeepFiles = 3;
+    private const long MaxBytes = 1_000_000;
+    private const int KeepFiles = 3;
 
-    readonly object _gate = new();
+    private readonly Lock _gate = new();
 
     public void Write(string line)
     {
@@ -27,17 +27,21 @@ public sealed class FileLogSink(string path)
         }
     }
 
-    void RotateIfLarge()
+    private void RotateIfLarge()
     {
         var current = new FileInfo(path);
-        if (!current.Exists || current.Length < MaxBytes) return;
+        if (!current.Exists || current.Length < MaxBytes)
+            return;
 
         var oldest = $"{path}.{KeepFiles - 1}";
-        if (File.Exists(oldest)) File.Delete(oldest);
+        if (File.Exists(oldest))
+            File.Delete(oldest);
 
         for (var i = KeepFiles - 2; i >= 1; i--)
+        {
             if (File.Exists($"{path}.{i}"))
                 File.Move($"{path}.{i}", $"{path}.{i + 1}", overwrite: true);
+        }
 
         File.Move(path, $"{path}.1", overwrite: true);
     }

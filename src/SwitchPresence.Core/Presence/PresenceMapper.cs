@@ -12,16 +12,18 @@ public sealed record MappedActivity(string AppId, DiscordActivity Activity);
 /// </summary>
 public static class PresenceMapper
 {
-    const int MaxDetailsLength = 128;
+    private const int MaxDetailsLength = 128;
 
     /// <summary>null means "show nothing", which is a result, not a failure.</summary>
     public static MappedActivity? Map(CoralPresence? presence, AppConfig config, long startedAtUnixMs)
     {
         // OFFLINE is the console being off; INACTIVE is the HOME menu. Neither is a game.
-        if (presence is null || presence.State is "OFFLINE" or "INACTIVE") return null;
+        if (presence is null || presence.State is "OFFLINE" or "INACTIVE")
+            return null;
 
         var game = presence.Game;
-        if (string.IsNullOrWhiteSpace(game?.Name)) return null;
+        if (string.IsNullOrWhiteSpace(game?.Name))
+            return null;
 
         var isSwitch2 = presence.Platform == 2;
         var consoleName = isSwitch2 ? "Nintendo Switch 2" : "Nintendo Switch";
@@ -48,20 +50,27 @@ public static class PresenceMapper
     /// sysDescription is the game's own status text, but it is often an empty string rather
     /// than absent, so emptiness has to count as "not set".
     /// </summary>
-    static string? SecondLine(CoralPresence presence, PresenceGame game, AppConfig config)
+    private static string? SecondLine(CoralPresence presence, PresenceGame game, AppConfig config)
     {
-        if (!string.IsNullOrWhiteSpace(game.SysDescription)) return game.SysDescription;
+        if (!string.IsNullOrWhiteSpace(game.SysDescription))
+            return game.SysDescription;
+
         return presence.State == "PLAYING" && config.ShowPlayingOnline ? "Playing online" : null;
     }
 
-    static DiscordButton[]? EshopButton(PresenceGame game, AppConfig config)
+    private static DiscordButton[]? EshopButton(PresenceGame game, AppConfig config)
     {
-        if (!config.ShowEshopButton) return null;
+        if (!config.ShowEshopButton)
+            return null;
+
         if (game.ShopUri is not { } shop || !shop.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
             return null;
 
         return [new DiscordButton { Label = "Nintendo eShop", Url = shop }];
     }
 
-    static string Truncate(string value, int max) => value.Length <= max ? value : value[..max];
+    private static string Truncate(string value, int max)
+    {
+        return value.Length <= max ? value : value[..max];
+    }
 }

@@ -13,10 +13,12 @@ public static class AppPaths
     public static string SessionFile => Path.Combine(DataDir, "session.bin");
     public static string CoralTokenFile => Path.Combine(DataDir, "coral.bin");
 
-    static string Ensure(Environment.SpecialFolder folder) =>
-        Ensure(Path.Combine(Environment.GetFolderPath(folder), "switch-presence"));
+    private static string Ensure(Environment.SpecialFolder folder)
+    {
+        return Ensure(Path.Combine(Environment.GetFolderPath(folder), "switch-presence"));
+    }
 
-    static string Ensure(string dir)
+    private static string Ensure(string dir)
     {
         Directory.CreateDirectory(dir);
         return dir;
@@ -47,7 +49,9 @@ public sealed class AppConfig
 
     public static AppConfig Load()
     {
-        if (!File.Exists(AppPaths.ConfigFile)) return new AppConfig();
+        if (!File.Exists(AppPaths.ConfigFile))
+            return new AppConfig();
+
         try
         {
             return JsonSerializer.Deserialize(File.ReadAllText(AppPaths.ConfigFile),
@@ -60,6 +64,9 @@ public sealed class AppConfig
         }
     }
 
-    public void Save() => File.WriteAllText(AppPaths.ConfigFile,
+    public void Save()
+    {
+        File.WriteAllText(AppPaths.ConfigFile,
         JsonSerializer.Serialize(this, AppJsonContext.Default.AppConfig));
+    }
 }

@@ -9,14 +9,18 @@ namespace SwitchPresence.Storage;
 /// </summary>
 public static class SecretStore
 {
-    public static void Write(string path, string value) =>
+    public static void Write(string path, string value)
+    {
         File.WriteAllBytes(path, ProtectedData.Protect(
             Encoding.UTF8.GetBytes(value), optionalEntropy: null, DataProtectionScope.CurrentUser));
+    }
 
     /// <summary>null when absent, or when it cannot be decrypted (different user or machine).</summary>
     public static string? Read(string path)
     {
-        if (!File.Exists(path)) return null;
+        if (!File.Exists(path))
+            return null;
+
         try
         {
             return Encoding.UTF8.GetString(ProtectedData.Unprotect(
@@ -31,6 +35,7 @@ public static class SecretStore
 
     public static void Delete(string path)
     {
-        if (File.Exists(path)) File.Delete(path);
+        if (File.Exists(path))
+            File.Delete(path);
     }
 }

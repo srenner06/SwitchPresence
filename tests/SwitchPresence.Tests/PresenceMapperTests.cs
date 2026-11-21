@@ -7,16 +7,21 @@ namespace SwitchPresence.Tests;
 
 public class PresenceMapperTests
 {
-    const long Start = 1_795_302_022_872;
+    private const long Start = 1_795_302_022_872;
 
-    static AppConfig Config() => new()
+    private static AppConfig Config()
     {
-        DiscordClientIdSwitch = "switch1-app",
-        DiscordClientIdSwitch2 = "switch2-app",
-    };
+        return new()
+        {
+            DiscordClientIdSwitch = "switch1-app",
+            DiscordClientIdSwitch2 = "switch2-app",
+        };
+    }
 
-    static CoralPresence Playing(string state = "ONLINE", int? platform = 2,
-        string? game = "Nintendo Switch Sports Resort", string? sysDescription = "") => new()
+    private static CoralPresence Playing(string state = "ONLINE", int? platform = 2,
+        string? game = "Nintendo Switch Sports Resort", string? sysDescription = "")
+    {
+        return new()
         {
             State = state,
             Platform = platform,
@@ -28,20 +33,27 @@ public class PresenceMapperTests
                 SysDescription = sysDescription,
             },
         };
+    }
 
     [Theory]
     [InlineData("OFFLINE")]
     [InlineData("INACTIVE")]
-    public void NothingIsShownWhenTheConsoleIsNotInAGame(string state) =>
+    public void NothingIsShownWhenTheConsoleIsNotInAGame(string state)
+    {
         Assert.Null(PresenceMapper.Map(Playing(state), Config(), Start));
+    }
 
     [Fact]
-    public void NothingIsShownWithoutAPresence() =>
+    public void NothingIsShownWithoutAPresence()
+    {
         Assert.Null(PresenceMapper.Map(null, Config(), Start));
+    }
 
     [Fact]
-    public void NothingIsShownWhenGameIsTheEmptyObjectCoralSendsWhileIdle() =>
+    public void NothingIsShownWhenGameIsTheEmptyObjectCoralSendsWhileIdle()
+    {
         Assert.Null(PresenceMapper.Map(Playing(game: null), Config(), Start));
+    }
 
     [Theory]
     [InlineData(2, "switch2-app", "Playing on Nintendo Switch 2")]
@@ -94,8 +106,10 @@ public class PresenceMapperTests
 
     // ONLINE means in a game; only PLAYING means in a game *online*.
     [Fact]
-    public void OnlineWithoutASysDescriptionHasNoSecondLine() =>
+    public void OnlineWithoutASysDescriptionHasNoSecondLine()
+    {
         Assert.Null(PresenceMapper.Map(Playing("ONLINE"), Config(), Start)!.Activity.State);
+    }
 
     [Fact]
     public void PlayingOnlineCanBeTurnedOff()
