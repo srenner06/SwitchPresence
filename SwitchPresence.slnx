@@ -1,4 +1,10 @@
 <Solution>
+  <Folder Name="/Projektmappenelemente/">
+    <File Path=".gitignore" />
+    <File Path="Directory.Packages.props" />
+    <File Path="global.json" />
+    <File Path="README.md" />
+  </Folder>
   <Folder Name="/spike/">
     <Project Path="spike/Spike.csproj" />
   </Folder>
