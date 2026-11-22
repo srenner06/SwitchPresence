@@ -1,0 +1,81 @@
+name: switch-presence — Release
+
+on:
+  push:
+    tags: ['v*.*.*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+# Never cancel a release mid-flight; a half-uploaded release is worse than a slow run.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  # Pinned, not detected: publish.ps1 defaults to the host architecture, which is right on a
+  # developer's machine and wrong here - an artifact labelled win-x64 must actually be x64,
+  # whatever GitHub's runner image happens to be.
+  RID: win-x64
+
+jobs:
+  release:
+    # NativeAOT links with MSVC, so unlike the other repos this cannot run on ubuntu.
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Derive version and tag
+        id: vars
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            RAW_TAG="${GITHUB_REF_NAME}"
+            VERSION="${RAW_TAG#v}"
+          else
+            RAW_TAG="manual-${GITHUB_RUN_NUMBER}"
+            VERSION="0.0.0-build.${GITHUB_RUN_NUMBER}"
+          fi
+          echo "raw_tag=${RAW_TAG}" >> $GITHUB_OUTPUT
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "zip=switch-presence-${RID}-${RAW_TAG}.zip" >> $GITHUB_OUTPUT
+
+      - name: Test
+        run: dotnet test tests/SwitchPresence.Tests --configuration Release
+
+      - name: Publish (NativeAOT)
+        shell: pwsh
+        run: ./publish.ps1 -Runtime $env:RID -Configuration Release -Version ${{ steps.vars.outputs.version }}
+
+      - name: Package
+        shell: pwsh
+        run: Compress-Archive -Path "publish/$env:RID/*.exe" -DestinationPath "${{ steps.vars.outputs.zip }}"
+
+      - name: Create or update the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="${{ steps.vars.outputs.raw_tag }}"
+          ZIP="${{ steps.vars.outputs.zip }}"
+
+          if gh release view "$TAG" &>/dev/null; then
+            gh release upload "$TAG" "$ZIP" --clobber
+          else
+            gh release create "$TAG" \
+              --title "switch-presence ${TAG}" \
+              --generate-notes \
+              "$ZIP"
+          fi

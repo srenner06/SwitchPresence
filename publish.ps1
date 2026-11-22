@@ -20,6 +20,9 @@
 .PARAMETER Output
     Overrides the output folder. Defaults to .\publish\<rid>, which .gitignore covers.
 
+.PARAMETER Version
+    Stamps the executables' file properties. Releases pass the tag; local builds leave it.
+
 .EXAMPLE
     .\publish.ps1
 .EXAMPLE
@@ -29,7 +32,8 @@
 param(
     [string]$Runtime,
     [string]$Configuration = 'Release',
-    [string]$Output
+    [string]$Output,
+    [string]$Version
 )
 
 $ErrorActionPreference = 'Stop'
@@ -56,12 +60,14 @@ if (Test-Path $Output) {
     Remove-Item $Output -Recurse -Force
 }
 
+$versionArgs = if ($Version) { @("-p:Version=$Version") } else { @() }
+
 foreach ($project in $projects) {
     $path = Join-Path $PSScriptRoot $project
     Write-Host ""
     Write-Host "Publishing $(Split-Path $project -Leaf)..."
 
-    dotnet publish $path --configuration $Configuration --runtime $Runtime --output $Output --nologo
+    dotnet publish $path --configuration $Configuration --runtime $Runtime --output $Output --nologo @versionArgs
 
     if ($LASTEXITCODE -ne 0) {
         throw "dotnet publish failed for $project (exit $LASTEXITCODE)"
