@@ -66,14 +66,27 @@ if (Test-Path $Output) {
     Remove-Item $Output -Recurse -Force
 }
 
-$versionArgs = if ($Version) { @("-p:Version=$Version") } else { @() }
-
 foreach ($project in $projects) {
     $path = Join-Path $PSScriptRoot $project
     Write-Host ""
     Write-Host "Publishing $(Split-Path $project -Leaf)..."
 
-    dotnet publish $path --configuration $Configuration --runtime $Runtime --output $Output --nologo @versionArgs
+    # Built as an array and splatted. Do not fold this into an `if` expression: PowerShell
+    # unrolls a single-element array into a string, and splatting a string passes one
+    # character per argument.
+    $arguments = @(
+        'publish', $path
+        '--configuration', $Configuration
+        '--runtime', $Runtime
+        '--output', $Output
+        '--nologo'
+    )
+
+    if ($Version) {
+        $arguments += "-p:Version=$Version"
+    }
+
+    dotnet @arguments
 
     if ($LASTEXITCODE -ne 0) {
         throw "dotnet publish failed for $project (exit $LASTEXITCODE)"

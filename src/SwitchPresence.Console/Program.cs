@@ -19,8 +19,9 @@ internal class Program
 
         Log.Sink = Console.WriteLine;
 
-        var exitCode = args.Length == 0 ? await RunAsync() : args[0].ToLowerInvariant() switch
+        var exitCode = args.ElementAtOrDefault(0)?.ToLowerInvariant() switch
         {
+            null => await RunAsync(),
             "login" => await LoginAsync(),
             "account" => await ChangeAccountAsync(),
             "autostart" => SetAutostart(args),
