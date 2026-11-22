@@ -162,13 +162,16 @@ public sealed class PresenceLoop(HttpClient http, AppConfig config, string nxapi
     {
         if (mapped is null)
         {
+            // Report every poll, not just the transition: with nothing playing at startup there
+            // is no transition, and a listener would sit on its initial text forever.
+            StatusChanged?.Invoke(null);
+
             if (_publishedJson is null)
                 return;
 
             Log.Info("nothing playing - activity cleared");
             await _discord.TrySetActivityAsync(null, ct);
             _publishedJson = null;
-            StatusChanged?.Invoke(null);
             return;
         }
 
@@ -213,6 +216,7 @@ public sealed class PresenceLoop(HttpClient http, AppConfig config, string nxapi
             return;
 
         Log.Info("Discord is not running - polling paused");
+        StatusChanged?.Invoke("Waiting for Discord");
         _paused = true;
         _publishedJson = null;
         await _discord.DisconnectAsync();

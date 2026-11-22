@@ -225,16 +225,18 @@ internal sealed class TrayIcon : IDisposable
             Log.Warn($"tray: Shell_NotifyIcon({action}) failed");
     }
 
-    /// <summary>The exe's own icon if it has one, otherwise the default application icon.</summary>
+    /// <summary>
+    /// ApplicationIcon puts the app's icon in its own resources under id 32512, so loading it
+    /// from this module gets it. Falling back to the system icon leaves a blank tray slot on
+    /// some shells, so a build without an icon is worth noticing in the log.
+    /// </summary>
     private static nint LoadAppIcon()
     {
-        if (Environment.ProcessPath is { } path)
-        {
-            var extracted = ExtractIconW(GetModuleHandleW(null), path, 0);
-            if (extracted != 0 && extracted != 1)
-                return extracted;
-        }
+        var own = LoadIconW(GetModuleHandleW(null), IdiApplication);
+        if (own != 0)
+            return own;
 
+        Log.Warn("tray: this build has no embedded icon");
         return LoadIconW(0, IdiApplication);
     }
 
@@ -351,9 +353,6 @@ internal sealed class TrayIcon : IDisposable
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     private static extern nint LoadIconW(nint instance, nint iconName);
-
-    [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
-    private static extern nint ExtractIconW(nint instance, string exeFileName, uint iconIndex);
 
     [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
     private static extern bool Shell_NotifyIconW(int message, ref NotifyIconData data);

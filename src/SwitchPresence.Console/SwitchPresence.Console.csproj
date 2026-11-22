@@ -11,6 +11,7 @@
     <ServerGarbageCollection>false</ServerGarbageCollection>
     <ConcurrentGarbageCollection>false</ConcurrentGarbageCollection>
     <PublishAot>true</PublishAot>
+    <ApplicationIcon>..\..\assets\switch-presence.ico</ApplicationIcon>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\SwitchPresence.Core\SwitchPresence.Core.csproj" />
