@@ -27,12 +27,23 @@ public static class NxapiAuth
         return candidates.FirstOrDefault(id => !string.IsNullOrWhiteSpace(id));
     }
 
-    public static string MissingMessage => $"""
-        No nxapi-auth client id.
+    /// <summary>How to obtain one. Shown before asking the user to type it in.</summary>
+    public static string RegistrationHelp =>
+        """
+        switch-presence needs an nxapi-auth client id to reach the service that signs and
+        encrypts Nintendo's requests. It is free and takes a minute:
 
-        Register a free public client at https://nxapi-auth.fancy.org.uk/oauth/clients
-        with the scopes ca:gf ca:er ca:dr, then either:
-          - set NXAPI_AUTH_CLIENT_ID, or
-          - put "nxapiAuthClientId": "<id>" in {AppPaths.ConfigFile}
+          1. Open https://nxapi-auth.fancy.org.uk/oauth/clients
+          2. Register a client of type "Public"
+          3. Give it the scopes: ca:gf  ca:er  ca:dr
+          4. Copy the client id from the top of its page
+        """;
+
+    /// <summary>For contexts that cannot ask, such as the windowless build.</summary>
+    public static string MissingMessage => $"""
+        {RegistrationHelp}
+
+        Then either set NXAPI_AUTH_CLIENT_ID, or put "nxapiAuthClientId": "<id>" in
+        {AppPaths.ConfigFile}
         """;
 }

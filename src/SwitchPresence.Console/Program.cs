@@ -202,8 +202,42 @@ internal class Program
             if (NxapiAuth.Resolve(config) is { } clientId)
                 return clientId;
 
-            Fail(NxapiAuth.MissingMessage);
-            return null;
+            // Redirected input means a script or a pipe, where a prompt would hang.
+            if (Console.IsInputRedirected)
+            {
+                Fail(NxapiAuth.MissingMessage);
+                return null;
+            }
+
+            return AskForClientId(config);
+        }
+
+        string? AskForClientId(AppConfig config)
+        {
+            Console.WriteLine(NxapiAuth.RegistrationHelp);
+            Console.Write("\nClient id (blank to cancel) > ");
+
+            var entered = Console.ReadLine()?.Trim();
+            if (string.IsNullOrWhiteSpace(entered))
+            {
+                Fail("No client id given.");
+                return null;
+            }
+
+            // Saving is the default: autostart and a double-clicked exe cannot see an
+            // environment variable set in some other shell.
+            Console.Write($"Save it to {AppPaths.ConfigFile}? [Y/n] > ");
+
+            if (string.Equals(Console.ReadLine()?.Trim(), "n", StringComparison.OrdinalIgnoreCase))
+                Console.WriteLine("Using it for this run only.\n");
+            else
+            {
+                config.NxapiAuthClientId = entered;
+                config.Save();
+                Console.WriteLine("Saved.\n");
+            }
+
+            return entered;
         }
 
         static HttpClient NewHttpClient()
