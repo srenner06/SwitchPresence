@@ -1,4 +1,5 @@
 using SwitchPresence;
+using SwitchPresence.Background;
 using SwitchPresence.Logging;
 using SwitchPresence.Presence;
 using SwitchPresence.Storage;
@@ -22,10 +23,10 @@ internal class Program
             var config = AppConfig.Load();
 
             if (NxapiAuth.Resolve(config) is not { } clientId)
-                return Quit("no nxapi-auth client id configured");
+                return Quit("No nxapi-auth client id is configured.");
 
             if (string.IsNullOrWhiteSpace(config.FriendNsaId) || SecretStore.Read(AppPaths.SessionFile) is null)
-                return Quit("not set up yet - run `switch-presence login` first");
+                return Quit("switch-presence is not set up yet.");
 
             using var cts = new CancellationTokenSource();
             using var stopEvent = AppInstance.CreateStopEvent();
@@ -59,6 +60,7 @@ internal class Program
         static int Quit(string reason)
         {
             Log.Error(reason);
+            SetupPrompt.Show(reason);
             return 1;
         }
     }

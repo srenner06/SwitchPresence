@@ -9,10 +9,12 @@ namespace SwitchPresence;
 public static class NxapiAuth
 {
     /// <summary>
-    /// Filled in for releases. Empty during development so the development client id never
-    /// enters git history; the terms ask for a separate id for development anyway.
+    /// Identifies this app to nxapi-auth, not any one user, so every copy ships the same one
+    /// and users register nothing. A public OAuth client holds no secret by definition - it
+    /// is readable in any released binary - so there is nothing here to hide.
+    /// A fork should replace it; config.json and NXAPI_AUTH_CLIENT_ID both override it.
     /// </summary>
-    public const string BuiltInClientId = "";
+    public const string BuiltInClientId = "I50wogeuwnvdFSKN2Hsc9w";
 
     /// <summary>config.json, then the environment, then whatever the build shipped with.</summary>
     public static string? Resolve(AppConfig config)

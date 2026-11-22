@@ -31,11 +31,25 @@ internal class Program
         async Task<int> RunAsync()
         {
             var config = AppConfig.Load();
+
+            if (!IsSetUp(config))
+            {
+                // Refusing with "run login first" just makes the user type a second command.
+                if (Console.IsInputRedirected)
+                    return Fail("Not set up yet. Run `switch-presence login` first.");
+
+                Console.WriteLine("Not set up yet - running setup first.\n");
+
+                var setup = await LoginAsync();
+                if (setup != 0)
+                    return setup;
+
+                config = AppConfig.Load();
+                Console.WriteLine();
+            }
+
             if (ResolveClientId(config) is not { } clientId)
                 return 1;
-
-            if (string.IsNullOrWhiteSpace(config.FriendNsaId))
-                return Fail("Not set up yet. Run `switch-presence login` first.");
 
             if (!AppInstance.TryAcquire(out var mutex))
                 return Fail("switch-presence is already running. Use `switch-presence stop` to end it.");
@@ -196,6 +210,12 @@ internal class Program
         }
 
         // ---------------------------------------------------------------- shared
+
+        static bool IsSetUp(AppConfig config)
+        {
+            return !string.IsNullOrWhiteSpace(config.FriendNsaId)
+                && SecretStore.Read(AppPaths.SessionFile) is not null;
+        }
 
         string? ResolveClientId(AppConfig config)
         {
