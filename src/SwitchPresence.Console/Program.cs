@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Text;
 using SwitchPresence;
+using SwitchPresence.Cli;
 using SwitchPresence.Logging;
 using SwitchPresence.Nintendo;
 using SwitchPresence.Presence;
@@ -13,7 +14,7 @@ internal class Program
         try { Console.OutputEncoding = Encoding.UTF8; } catch { /* some hosts refuse; game names may mangle */ }
         Log.Sink = Console.WriteLine;
 
-        return args.Length == 0 ? await RunAsync() : args[0].ToLowerInvariant() switch
+        var exitCode = args.Length == 0 ? await RunAsync() : args[0].ToLowerInvariant() switch
         {
             "login" => await LoginAsync(),
             "autostart" => SetAutostart(args),
@@ -21,6 +22,9 @@ internal class Program
             "help" or "-h" or "--help" => Help(),
             var other => Fail($"unknown command '{other}'. Try `switch-presence help`."),
         };
+
+        ConsoleWindow.WaitBeforeClosing();
+        return exitCode;
 
         // ---------------------------------------------------------------- run
 
@@ -105,6 +109,12 @@ internal class Program
                 var chosen = ChooseFriend(friends);
                 config.FriendNsaId = chosen.NsaId;
                 config.FriendName = chosen.Name;
+
+                // Remember a client id that came from the environment, so running the exe
+                // later - by double-click, or from autostart - needs no variable set.
+                if (config.NxapiAuthClientId is null && clientId != NxapiAuth.BuiltInClientId)
+                    config.NxapiAuthClientId = clientId;
+
                 config.Save();
 
                 Console.WriteLine($"\nWatching {chosen.Name}. Config: {AppPaths.ConfigFile}");
