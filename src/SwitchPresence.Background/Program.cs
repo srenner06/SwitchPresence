@@ -1,15 +1,17 @@
+using System.Diagnostics;
 using SwitchPresence;
 using SwitchPresence.Background;
 using SwitchPresence.Logging;
 using SwitchPresence.Presence;
 using SwitchPresence.Storage;
 
-// No CLI, no prompts, no setup: this build has no window to show any of it in.
-// Everything interactive lives in switch-presence.exe.
+// No CLI and no prompts: this build has no console. What it does have is a tray icon, which is
+// how it reports that it is running and how it is quit. Everything interactive lives in
+// switch-presence.exe, which this one launches when setup is needed.
 
 internal class Program
 {
-    private static async Task<int> Main(string[] args)
+    private static int Main(string[] args)
     {
         if (!AppInstance.TryAcquire(out var mutex))
             return 1;
@@ -44,17 +46,36 @@ internal class Program
                 Timeout = TimeSpan.FromSeconds(30),
             };
 
-            try
+            using var tray = new TrayIcon("switch-presence");
+            var loop = new PresenceLoop(http, config, clientId) { StatusChanged = tray.UpdateStatus };
+
+            tray.QuitRequested += () => cts.Cancel();
+            tray.SetupRequested += () => StartConsole("login");
+            tray.ChangeAccountRequested += () => StartConsole("account");
+
+            // The pump owns this thread, so the loop runs beside it and ends it when it stops.
+            var work = Task.Run(async () =>
             {
-                await new PresenceLoop(http, config, clientId).RunAsync(cts.Token);
-                Log.Info("stopped");
-                return 0;
-            }
-            catch (Exception ex)
-            {
-                Log.Error(ex.ToString());
-                return 1;
-            }
+                try
+                {
+                    await loop.RunAsync(cts.Token);
+                    Log.Info("stopped");
+                }
+                catch (Exception ex)
+                {
+                    Log.Error(ex.ToString());
+                }
+                finally
+                {
+                    tray.Stop();
+                }
+            }, CancellationToken.None);
+
+            tray.Run();
+
+            cts.Cancel();
+            work.Wait(TimeSpan.FromSeconds(5));
+            return 0;
         }
 
         static int Quit(string reason)
@@ -62,6 +83,27 @@ internal class Program
             Log.Error(reason);
             SetupPrompt.Show(reason);
             return 1;
+        }
+    }
+
+    /// <summary>Hands an interactive job to the console build, which can actually ask things.</summary>
+    private static void StartConsole(string command)
+    {
+        var console = Path.Combine(AppContext.BaseDirectory, "switch-presence.exe");
+
+        if (!File.Exists(console))
+        {
+            Log.Error($"cannot find {console}");
+            return;
+        }
+
+        try
+        {
+            Process.Start(new ProcessStartInfo(console, command) { UseShellExecute = true });
+        }
+        catch (Exception ex)
+        {
+            Log.Error($"could not start {console} {command}: {ex.Message}");
         }
     }
 }

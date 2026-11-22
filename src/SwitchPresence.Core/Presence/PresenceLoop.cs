@@ -30,6 +30,21 @@ public sealed class PresenceLoop(HttpClient http, AppConfig config, string nxapi
     private string _sessionToken = "";
     private string _zncaVersion = "";
 
+    /// <summary>
+    /// Re-read every tick rather than held, so changing the watched account - from the tray, or
+    /// from `switch-presence login` in another process - takes effect without a restart.
+    /// </summary>
+    private AppConfig _config = config;
+
+    /// <summary>
+    /// The last friend list fetched. Coral returns all of them on every poll and we use one, so
+    /// the account picker can reuse this instead of making its own call.
+    /// </summary>
+    public IReadOnlyList<Friend> LastFriends { get; private set; } = [];
+
+    /// <summary>What to show in a tray tooltip. Null means nothing is playing.</summary>
+    public Action<string?>? StatusChanged { get; set; }
+
     private CoralSession? _session;
     private string? _publishedJson;
     private string? _currentGame;
@@ -63,28 +78,30 @@ public sealed class PresenceLoop(HttpClient http, AppConfig config, string nxapi
 
     private async Task StartAsync(CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(config.FriendNsaId))
+        if (string.IsNullOrWhiteSpace(_config.FriendNsaId))
             throw new InvalidOperationException("No account chosen yet. Run `switch-presence login` first.");
 
         _sessionToken = SecretStore.Read(AppPaths.SessionFile)
             ?? throw new InvalidOperationException("Not signed in. Run `switch-presence login` first.");
 
         _coral = new CoralClient(http, _znca, _accounts);
-        _zncaVersion = config.ZncaVersionOverride ?? await _znca.GetZncaVersionAsync(ct);
+        _zncaVersion = _config.ZncaVersionOverride ?? await _znca.GetZncaVersionAsync(ct);
         _session = LoadCachedSession();
 
-        Log.Info($"watching {config.FriendName ?? config.FriendNsaId} (NSO app {_zncaVersion})");
+        Log.Info($"watching {_config.FriendName ?? _config.FriendNsaId} (NSO app {_zncaVersion})");
     }
 
     /// <summary>One iteration. Returns how long to wait before the next one.</summary>
     private async Task<TimeSpan> TickAsync(CancellationToken ct)
     {
+        _config = AppConfig.Load();
+
         // Polling Nintendo while nothing can consume the result wastes their service and
         // ours, so pause entirely while Discord is closed.
         if (!DiscordIsRunning())
         {
             await PauseAsync();
-            return config.PollInterval;
+            return _config.PollInterval;
         }
 
         Resume();
@@ -94,11 +111,11 @@ public sealed class PresenceLoop(HttpClient http, AppConfig config, string nxapi
             await EnsureSessionAsync(ct);
 
             var presence = await FetchPresenceAsync(ct);
-            await PublishAsync(PresenceMapper.Map(presence, config, StartTimestampFor(presence)), ct);
+            await PublishAsync(PresenceMapper.Map(presence, _config, StartTimestampFor(presence)), ct);
 
             _lastSuccess = DateTimeOffset.UtcNow;
             _failures = 0;
-            return config.PollInterval;
+            return _config.PollInterval;
         }
         catch (CoralException ex) when (ex.NeedsRelogin)
         {
@@ -118,10 +135,12 @@ public sealed class PresenceLoop(HttpClient http, AppConfig config, string nxapi
     private async Task<CoralPresence?> FetchPresenceAsync(CancellationToken ct)
     {
         var friends = await _coral.GetFriendsAsync(_session!, _zncaVersion, ct);
-        var friend = friends.FirstOrDefault(f => f.NsaId == config.FriendNsaId);
+        LastFriends = friends;
+
+        var friend = friends.FirstOrDefault(f => f.NsaId == _config.FriendNsaId);
 
         if (friend is null)
-            Log.Warn($"{config.FriendNsaId} is not in the friend list any more");
+            Log.Warn($"{_config.FriendNsaId} is not in the friend list any more");
 
         return friend?.Presence;
     }
@@ -149,6 +168,7 @@ public sealed class PresenceLoop(HttpClient http, AppConfig config, string nxapi
             Log.Info("nothing playing - activity cleared");
             await _discord.TrySetActivityAsync(null, ct);
             _publishedJson = null;
+            StatusChanged?.Invoke(null);
             return;
         }
 
@@ -174,6 +194,7 @@ public sealed class PresenceLoop(HttpClient http, AppConfig config, string nxapi
 
         _publishedJson = json;
         Log.Info($"{mapped.Activity.Details} ({mapped.Activity.State ?? "no status"})");
+        StatusChanged?.Invoke(mapped.Activity.Details);
     }
 
     private async Task EnsureSessionAsync(CancellationToken ct)

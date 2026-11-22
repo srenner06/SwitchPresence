@@ -52,4 +52,4 @@ Not affiliated with, endorsed by, or connected to Nintendo. "Nintendo Switch" is
 
 ## License
 
-MIT — license file to follow before the first release.
+[MIT](LICENSE).

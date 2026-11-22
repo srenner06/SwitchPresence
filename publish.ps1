@@ -57,6 +57,12 @@ Write-Host "Configuration : $Configuration"
 Write-Host "Output        : $Output"
 
 if (Test-Path $Output) {
+    # A running build holds its own exe open, and Remove-Item's error does not say so.
+    $running = Get-Process -Name 'switch-presence', 'switch-presence-bg' -ErrorAction SilentlyContinue
+    if ($running) {
+        throw "switch-presence is running (pid $($running.Id -join ', ')). Stop it first: switch-presence stop"
+    }
+
     Remove-Item $Output -Recurse -Force
 }
 

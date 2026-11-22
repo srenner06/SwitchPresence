@@ -12,7 +12,8 @@ namespace SwitchPresence.Nintendo;
 /// </summary>
 public sealed class ZncaApiClient(HttpClient http, string clientId)
 {
-    public const string UserAgent = "switch-presence/0.1.0 (+https://github.com/srenner06/SwitchPresence)";
+    /// <summary>The API terms require the project name, its version and a contact URL.</summary>
+    public const string UserAgent = $"switch-presence/{BuildInfo.VersionTag} (+{BuildInfo.RepositoryUrl})";
 
     private const string Origin = "https://nxapi-znca-api.fancy.org.uk";
     private const string Api = $"{Origin}/api/znca/";

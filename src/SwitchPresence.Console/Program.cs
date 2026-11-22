@@ -17,6 +17,7 @@ internal class Program
         var exitCode = args.Length == 0 ? await RunAsync() : args[0].ToLowerInvariant() switch
         {
             "login" => await LoginAsync(),
+            "account" => await ChangeAccountAsync(),
             "autostart" => SetAutostart(args),
             "stop" => Stop(),
             "help" or "-h" or "--help" => Help(),
@@ -62,11 +63,16 @@ internal class Program
                 using var stopEvent = AppInstance.CreateStopEvent();
                 ThreadPool.RegisterWaitForSingleObject(stopEvent, (_, _) => cts.Cancel(), null, -1, executeOnlyOnce: true);
 
-                Console.WriteLine("Ctrl+C to stop.\n");
+                Console.WriteLine("[a] change account   [q] quit   (Ctrl+C also works)\n");
                 using var http = NewHttpClient();
+                var loop = new PresenceLoop(http, config, clientId);
+
                 try
                 {
-                    await new PresenceLoop(http, config, clientId).RunAsync(cts.Token);
+                    var work = loop.RunAsync(cts.Token);
+                    await Task.WhenAny(work, ReadKeysAsync(loop, cts));
+                    await work;
+
                     Console.WriteLine("\nStopped; Discord activity cleared.");
                     return 0;
                 }
@@ -120,18 +126,14 @@ internal class Program
                 if (friends.Length == 0)
                     return Fail("That account has no friends yet. Add your main account as a friend, then try again.");
 
-                var chosen = ChooseFriend(friends);
-                config.FriendNsaId = chosen.NsaId;
-                config.FriendName = chosen.Name;
-
                 // Remember a client id that came from the environment, so running the exe
                 // later - by double-click, or from autostart - needs no variable set.
                 if (config.NxapiAuthClientId is null && clientId != NxapiAuth.BuiltInClientId)
                     config.NxapiAuthClientId = clientId;
 
-                config.Save();
+                Save(config, ChooseFriend(friends));
 
-                Console.WriteLine($"\nWatching {chosen.Name}. Config: {AppPaths.ConfigFile}");
+                Console.WriteLine($"Config: {AppPaths.ConfigFile}");
                 Console.WriteLine("Run `switch-presence` to start.");
                 return 0;
             }
@@ -211,6 +213,95 @@ internal class Program
 
         // ---------------------------------------------------------------- shared
 
+        // ---------------------------------------------------------------- change account
+
+        /// <summary>Keys while the loop runs. Ends when the token is cancelled.</summary>
+        async Task ReadKeysAsync(PresenceLoop loop, CancellationTokenSource cts)
+        {
+            if (Console.IsInputRedirected)
+                return;
+
+            while (!cts.IsCancellationRequested)
+            {
+                if (!Console.KeyAvailable)
+                {
+                    await Task.Delay(150, CancellationToken.None);
+                    continue;
+                }
+
+                switch (Console.ReadKey(intercept: true).Key)
+                {
+                    case ConsoleKey.A:
+                        PickFromLastPoll(loop);
+                        break;
+                    case ConsoleKey.Q:
+                        await cts.CancelAsync();
+                        return;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Uses the friend list the loop already fetched, so changing account costs no extra
+        /// Coral call. The loop re-reads config every poll, so saving is all it takes.
+        /// </summary>
+        void PickFromLastPoll(PresenceLoop loop)
+        {
+            if (loop.LastFriends.Count == 0)
+            {
+                Console.WriteLine("No friend list yet - wait for the first poll.");
+                return;
+            }
+
+            var config = AppConfig.Load();
+            Save(config, ChooseFriend([.. loop.LastFriends]));
+            Console.WriteLine("Takes effect at the next poll.\n");
+        }
+
+        /// <summary>The `account` command: same choice, but fetched fresh. Used by the tray.</summary>
+        async Task<int> ChangeAccountAsync()
+        {
+            var config = AppConfig.Load();
+
+            if (!IsSetUp(config))
+                return Fail("Not set up yet. Run `switch-presence login` first.");
+
+            if (ResolveClientId(config) is not { } clientId)
+                return 1;
+
+            var sessionToken = SecretStore.Read(AppPaths.SessionFile)!;
+            using var http = NewHttpClient();
+
+            var accounts = new NintendoAccountClient(http);
+            var znca = new ZncaApiClient(http, clientId);
+            var coral = new CoralClient(http, znca, accounts);
+
+            try
+            {
+                var version = config.ZncaVersionOverride ?? await znca.GetZncaVersionAsync();
+                var session = await coral.LoginAsync(sessionToken, version);
+                var friends = await coral.GetFriendsAsync(session, version);
+
+                if (friends.Length == 0)
+                    return Fail("That account has no friends.");
+
+                Save(config, ChooseFriend(friends));
+                return 0;
+            }
+            catch (Exception ex) when (ex is ApiException or CoralException)
+            {
+                return Fail(ex.Message);
+            }
+        }
+
+        void Save(AppConfig config, Friend chosen)
+        {
+            config.FriendNsaId = chosen.NsaId;
+            config.FriendName = chosen.Name;
+            config.Save();
+            Console.WriteLine($"Now watching {chosen.Name}.");
+        }
+
         static bool IsSetUp(AppConfig config)
         {
             return !string.IsNullOrWhiteSpace(config.FriendNsaId)
@@ -277,8 +368,10 @@ internal class Program
             Console.WriteLine("""
         switch-presence - shows your Switch game as your Discord activity
 
-          switch-presence                 run in this console (Ctrl+C to stop)
+          switch-presence                 run in this console
+                                          [a] change account  [q] quit
           switch-presence login           sign in and pick the account to watch
+          switch-presence account         pick a different account to watch
           switch-presence autostart on    start the windowless build at sign-in
           switch-presence autostart off
           switch-presence stop            stop a running instance

@@ -54,6 +54,19 @@ jobs:
       - name: Test
         run: dotnet test tests/SwitchPresence.Tests --configuration Release
 
+      # The User-Agent must carry the real version; the API terms require it.
+      - name: Stamp the version
+        shell: bash
+        env:
+          FILE: src/SwitchPresence.Core/Version.cs
+          VERSION: ${{ steps.vars.outputs.version }}
+        run: |
+          set -euo pipefail
+          [ -f "$FILE" ] || { echo "ERROR: $FILE not found"; exit 1; }
+          grep -q '"development"' "$FILE" || { echo "ERROR: placeholder missing from $FILE"; exit 1; }
+          sed -i "s|\"development\"|\"$(printf '%s' "$VERSION" | sed 's/[&|\\]/\\&/g')\"|" "$FILE"
+          grep -n 'VersionTag' "$FILE"
+
       - name: Publish (NativeAOT)
         shell: pwsh
         run: ./publish.ps1 -Runtime $env:RID -Configuration Release -Version ${{ steps.vars.outputs.version }}

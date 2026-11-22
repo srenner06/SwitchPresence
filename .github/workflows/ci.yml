@@ -1,0 +1,25 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    # Windows-only app; the Registry and DPAPI code will not even compile elsewhere.
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Build
+        run: dotnet build SwitchPresence.slnx --configuration Release
+
+      - name: Test
+        run: dotnet test tests/SwitchPresence.Tests --configuration Release --no-build
