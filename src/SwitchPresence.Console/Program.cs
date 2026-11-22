@@ -12,6 +12,11 @@ internal class Program
     private static async Task<int> Main(string[] args)
     {
         try { Console.OutputEncoding = Encoding.UTF8; } catch { /* some hosts refuse; game names may mangle */ }
+
+        // Windows Terminal hosts console apps, so the taskbar icon is always its own. The title
+        // is the one part we own, and it beats showing the working directory.
+        try { Console.Title = "switch-presence"; } catch (IOException) { /* no console attached */ }
+
         Log.Sink = Console.WriteLine;
 
         var exitCode = args.Length == 0 ? await RunAsync() : args[0].ToLowerInvariant() switch
