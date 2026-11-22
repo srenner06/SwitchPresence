@@ -29,6 +29,7 @@ internal sealed class TrayIcon : IDisposable
 
     private const int MfString = 0x0000;
     private const int MfGrayed = 0x0001;
+    private const int MfChecked = 0x0008;
     private const int MfSeparator = 0x0800;
     private const int TpmRightButton = 0x0002;
     private const int TpmReturnCmd = 0x0100;
@@ -36,7 +37,8 @@ internal sealed class TrayIcon : IDisposable
     private const int IdStatus = 1;
     private const int IdSetup = 2;
     private const int IdChangeAccount = 3;
-    private const int IdQuit = 4;
+    private const int IdAutostart = 4;
+    private const int IdQuit = 5;
 
     private const int IdiApplication = 32512;
 
@@ -172,9 +174,42 @@ internal sealed class TrayIcon : IDisposable
             case IdChangeAccount:
                 ChangeAccountRequested?.Invoke();
                 break;
+            case IdAutostart:
+                ToggleAutostart();
+                break;
             case IdQuit:
                 QuitRequested?.Invoke();
                 break;
+        }
+    }
+
+    /// <summary>
+    /// Registers this executable, which is the one autostart should launch - unlike the console
+    /// build, which has to go looking for it next door.
+    /// </summary>
+    private static void ToggleAutostart()
+    {
+        try
+        {
+            if (Autostart.IsEnabled)
+            {
+                Autostart.Disable();
+                Log.Info("autostart off");
+                return;
+            }
+
+            if (Environment.ProcessPath is not { } path)
+            {
+                Log.Error("autostart: cannot determine this executable's path");
+                return;
+            }
+
+            Autostart.Enable(path);
+            Log.Info($"autostart on: {path}");
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or UnauthorizedAccessException)
+        {
+            Log.Error($"autostart: {ex.Message}");
         }
     }
 
@@ -190,6 +225,8 @@ internal sealed class TrayIcon : IDisposable
             AppendMenuW(menu, MfSeparator, 0, null);
             AppendMenuW(menu, MfString, IdChangeAccount, "Change account...");
             AppendMenuW(menu, MfString, IdSetup, "Open setup...");
+            AppendMenuW(menu, (uint)(MfString | (Autostart.IsEnabled ? MfChecked : 0)), IdAutostart,
+                "Start with Windows");
             AppendMenuW(menu, MfSeparator, 0, null);
             AppendMenuW(menu, MfString, IdQuit, "Quit");
 
